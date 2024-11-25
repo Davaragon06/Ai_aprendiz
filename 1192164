@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IA Conversacional Avanzada</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 250px;
+            background: linear-gradient(135deg, #007bff, #3f51b5);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        .sidebar h2 {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .sidebar ul {
+            list-style: none;
+        }
+        .sidebar ul li {
+            margin: 15px 0;
+            padding: 10px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+        .sidebar ul li:hover {
+            background-color: rgba(255,255,255,0.2);
+        }
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            border-left: 1px solid #e0e0e0;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background-color: #f9fafb;
+        }
+        .message {
+            margin-bottom: 15px;
+            max-width: 75%;
+            padding: 10px;
+            border-radius: 10px;
+            position: relative;
+            clear: both;
+        }
+        .message.user {
+            float: right;
+            background: linear-gradient(135deg, #007bff, #3f51b5);
+            color: white;
+            border-bottom-right-radius: 0;
+        }
+        .message.ai {
+            float: left;
+            background: #f1f1f1;
+            color: #333;
+            border-bottom-left-radius: 0;
+        }
+        .input-box {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background-color: #f0f2f5;
+            border-top: 1px solid #e0e0e0;
+        }
+        .input-box input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            margin-right: 10px;
+        }
+        .input-box button {
+            background: linear-gradient(135deg, #007bff, #3f51b5);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .input-box button:hover {
+            transform: scale(1.05);
+        }
+        .icons {
+            display: flex;
+            align-items: center;
+        }
+        .icons img {
+            width: 28px;
+            height: 28px;
+            margin: 0 10px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        .icons img:hover {
+            opacity: 1;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .language-selector {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .language-btn {
+            padding: 10px 20px;
+            background-color: #f0f0f0;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .language-btn.active {
+            background-color: #007bff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>IA Conversacional</h2>
+        <ul>
+            <li onclick="showHome()">? Inicio</li>
+            <li onclick="showHistory()">? Historial</li>
+            <li onclick="showSettings()">?? Configuración</li>
+            <li onclick="showHelp()">? Ayuda</li>
+            <li onclick="changeLanguage()">? Idioma</li>
+        </ul>
+    </div>
+
+    <div class="chat-container">
+        <div class="messages" id="messages">
+            <div class="message ai">¡Hola! Soy tu asistente inteligente. Estoy aquí para ayudarte.</div>
+        </div>
+        <div class="input-box">
+            <input type="text" id="userInput" placeholder="Escribe un mensaje...">
+            <button onclick="sendMessage()">Enviar</button>
+            <div class="icons">
+                <img src="https://img.icons8.com/material-outlined/24/microphone--v1.png" alt="Grabar voz" onclick="startVoiceRecognition()">
+                <img src="https://img.icons8.com/material-outlined/24/camera.png" alt="Subir imagen" onclick="triggerImageUpload()">
+                <img src="https://img.icons8.com/material-outlined/24/file.png" alt="Subir archivo" onclick="triggerFileUpload()">
+            </div>
+        </div>
+        <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="processImage(this)">
+        <input type="file" id="fileInput" style="display:none" onchange="processFile(this)">
+    </div>
+
+    <div id="languageModal" class="modal">
+        <div class="modal-content">
+            <h2>Selecciona tu Idioma</h2>
+            <div class="language-selector">
+                <button class="language-btn active" onclick="setLanguage('es')">Español</button>
+                <button class="language-btn" onclick="setLanguage('en')">English</button>
+                <button class="language-btn" onclick="setLanguage('pt')">Português</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuración y estado de la aplicación
+        const APP_CONFIG = {
+            currentLanguage: 'es',
+            maxHistoryLength: 100,
+            voiceRecognitionEnabled: true,
+            theme: 'default'
+        };
+
+        // Almacenamiento de conocimiento y contexto
+        let knowledge = JSON.parse(localStorage.getItem('knowledge')) || {};
+        let conversationHistory = JSON.parse(localStorage.getItem('conversationHistory')) || [];
+        let languageResources = {
+            es: {
+                welcome: "¡Hola! Soy tu asistente inteligente.",
+                noCommand: "No entiendo ese comando.",
+                fileProcessing: "Procesando archivo...",
+                imageProcessing: "Analizando imagen..."
+            },
+            en: {
+                welcome: "Hi! I'm your intelligent assistant.",
+                noCommand: "I don't understand that command.",
+                fileProcessing: "Processing file...",
+                imageProcessing: "Analyzing image..."
+            },
+            pt: {
+                welcome: "Olá! Sou seu assistente inteligente.",
+                noCommand: "Não entendo esse comando.",
+                fileProcessing: "Processando arquivo...",
+                imageProcessing: "Analisando imagem..."
+            }
+        };
+
+        // Inicialización del reconocimiento de voz
+        let recognition;
+        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                processUserInput(transcript);
+            };
+
+            recognition.onerror = (event) => {
+                addMessage('ai', `Error de reconocimiento de voz: ${event.error}`);
+            };
+        }
+
+        function startVoiceRecognition() {
+            if (recognition && APP_CONFIG.voiceRecognitionEnabled) {
+                recognition.start();
+                addMessage('ai', 'Escuchando...');
+            } else {
+                addMessage('ai', 'Reconocimiento de voz no disponible');
+            }
+        }
+
+        function processUserInput(message) {
+            addMessage('user', message);
+            
+            // Lógica de procesamiento de mensajes
+            let response = generateResponse(message);
+            addMessage('ai', response);
+
+            // Guardar en historial
+            saveToHistory(message, response);
+        }
+
+        function generateResponse(message) {
+            // Sistema básico de respuestas
+            const lowercaseMessage = message.toLowerCase();
+
+            if (lowercaseMessage.includes('hola')) return '¡Hola! ¿En qué puedo ayudarte hoy?';
+            if (lowercaseMessage.includes('ayuda')) return 'Estoy aquí para ayudarte. Puedes preguntar sobre cualquier cosa.';
+            if (lowercaseMessage.includes('gracias')) return 'De nada. Estoy aquí para ayudar.';
+
+            // Aprendizaje básico
+            if (knowledge[message]) return knowledge[message];
+
+            return 'Aún estoy aprendiendo. ¿Podrías explicarme más?';
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+
+            if (message) {
+                processUserInput(message);
+                input.value = '';
+            }
+        }
+
+        function addMessage(type, text) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = text;
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function saveToHistory(userMessage, aiResponse) {
+            conversationHistory.push({
+                user: userMessage,
+                ai: aiResponse,
+                timestamp: new Date().toISOString()
+            });
+
+            // Limitar historial
+            if (conversationHistory.length > APP_CONFIG.maxHistoryLength) {
+                conversationHistory.shift();
+            }
+
+            localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
+        }
+
+        function triggerImageUpload() {
+            document.getElementById('imageInput').click();
+        }
+
+        function triggerFileUpload() {
+            document.getElementById('fileInput').click();
+        }
+
+        function processImage(input) {
+            const file = input.files[0];
+            if (file) {
+                addMessage('ai', languageResources[APP_CONFIG.currentLanguage].imageProcessing);
+                // Aquí iría la lógica de procesamiento de imagen (pendiente)
+            }
+        }
+
+        function processFile(input) {
+            const file = input.files[0];
+            if (file) {
+                addMessage('ai', languageResources[APP_CONFIG.currentLanguage].fileProcessing);
+                // Aquí iría la lógica de procesamiento de archivo (pendiente)
+            }
+        }
+
+        function showHistory() {
+            const messages = document.getElementById('messages');
+            messages.innerHTML = '';
+            
+            conversationHistory.forEach(entry => {
+                addMessage('user', entry.user);
+                addMessage('ai', entry.ai);
+            });
+        }
+
+        function changeLanguage() {
+            const modal = document.getElementById('languageModal');
+            modal.style.display = 'flex';
+        }
+
+        function setLanguage(lang) {
+            APP_CONFIG.currentLanguage = lang;
+            recognition.lang = lang === 'es' ? 'es-ES' : (lang === 'en' ? 'en-US' : 'pt-BR');
+            
+            // Actualizar botones de idioma
+            document.querySelectorAll('.language-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Cambiar mensaje de bienvenida
+            const messages = document.getElementById('messages');
+            messages.innerHTML = '';
+            addMessage('ai', languageResources[lang].welcome);
+
+            // Cerrar modal
+            document.getElementById('languageModal').style.display = 'none';
+        }
+
+        // Eventos de teclado
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', () => {
+            addMessage('ai', languageResources[APP_CONFIG.currentLanguage].welcome);
+        });
+    </script>
+</body>
+</html>) {
+            addMessage('ai', "Aquí está tu historial.");
+        }
+
+        function showSettings() {
+            addMessage('ai', "Configuración abierta.");
+        }
+
+        function showHelp() {
+            addMessage('ai', "¿Cómo puedo ayudarte?");
+        }
+    </script>
+</body>
+</html>
