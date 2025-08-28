@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GhostLink – Chat efímero</title>
+<style>
+  body{
+    font-family: 'Courier New', monospace;
+    background: #111;
+    color: #0f0;
+    margin: 0;
+    padding: 1rem;
+    min-height: 100vh;
+  }
+  .container { max-width: 700px; margin: 0 auto; }
+  h1 { 
+    text-align: center; 
+    margin-bottom: 1rem;
+    text-shadow: 0 0 5px #0f0;
+  }
+  .status {
+    text-align: center;
+    padding: 0.3rem;
+    margin-bottom: 1rem;
+    border: 1px solid;
+    font-size: 0.9em;
+  }
+  .status.offline { border-color: #f00; color: #f00; }
+  .status.connecting { border-color: #ff0; color: #ff0; }
+  .status.online { border-color: #0f0; color: #0f0; }
+  
+  .setup {
+    border: 1px solid #0f0;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: rgba(0,255,0,0.05);
+  }
+  .setup input, .setup button {
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 0.4rem 0.6rem;
+    margin: 0.2rem;
+    font-family: inherit;
+  }
+  .setup button:hover { background: #0f0; color: #000; cursor: pointer; }
+  
+  .signaling {
+    display: none;
+    border: 1px solid #ff0;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: rgba(255,255,0,0.05);
+  }
+  .signaling textarea {
+    width: 100%;
+    height: 80px;
+    background: #000;
+    color: #ff0;
+    border: 1px solid #ff0;
+    font-family: monospace;
+    font-size: 0.8rem;
+    padding: 0.3rem;
+    resize: vertical;
+  }
+  .signaling button {
+    background: #000;
+    color: #ff0;
+    border: 1px solid #ff0;
+    padding: 0.3rem 0.6rem;
+    margin: 0.2rem;
+    cursor: pointer;
+  }
+  .signaling button:hover { background: #ff0; color: #000; }
+  
+  #log {
+    height: 50vh;
+    overflow-y: auto;
+    border: 1px solid #0f0;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    background: rgba(0,0,0,0.8);
+    font-family: monospace;
+    font-size: 0.9rem;
+  }
+  
+  .message {
+    margin: 0.2rem 0;
+    padding: 0.1rem;
+    position: relative;
+    animation: fadeIn 0.3s ease-in;
+  }
+  .message.fade-out {
+    animation: fadeOut 2s ease-out forwards;
+  }
+  .message.own { color: #4f4; }
+  .message.other { color: #44f; border-left: 2px solid #44f; padding-left: 0.5rem; }
+  .message.system { color: #fa4; font-style: italic; }
+  
+  .message-controls {
+    position: absolute;
+    right: 0.2rem;
+    top: 0.1rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .message:hover .message-controls { opacity: 1; }
+  .download-btn {
+    background: none;
+    border: 1px solid #666;
+    color: #666;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.3rem;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .download-btn:hover {
+    background: #666;
+    color: #000;
+  }
+  
+  .countdown {
+    font-size: 0.7rem;
+    color: #f84;
+    margin-left: 0.5rem;
+  }
+  
+  .input-area {
+    display: flex;
+    gap: 0.5rem;
+  }
+  #msg {
+    flex: 1;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 0.5rem;
+    font-family: inherit;
+  }
+  #sendBtn {
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+  }
+  #sendBtn:hover { background: #0f0; color: #000; }
+  #sendBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    background: #000;
+    color: #444;
+  }
+  
+  .settings {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    color: #666;
+    border-top: 1px solid #333;
+    padding-top: 0.5rem;
+  }
+  .settings label {
+    display: block;
+    margin: 0.3rem 0;
+  }
+  .settings input[type="number"], .settings select {
+    background: #000;
+    color: #666;
+    border: 1px solid #333;
+    padding: 0.2rem;
+    width: 60px;
+    margin-left: 0.5rem;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeOut {
+    to { opacity: 0; transform: translateY(-10px); height: 0; margin: 0; padding: 0; }
+  }
+  
+  .hidden { display: none !important; }
+  
+  @media (max-width: 600px) {
+    body { padding: 0.5rem; }
+    #log { height: 40vh; }
+    .message-controls { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>👻 GhostLink</h1>
+  
+  <div class="status offline" id="status">● OFFLINE</div>
+  
+  <div class="setup" id="setupPanel">
+    <div>
+      <label>🔑 Clave simétrica compartida:</label><br>
+      <input type="password" id="pwd" placeholder="pásala por voz/señas" autocomplete="new-password"/>
+      <button onclick="initConnection()">Iniciar</button>
+    </div>
+    <div style="margin-top: 0.5rem;">
+      <label><input type="checkbox" id="isInitiator"> Soy quien inicia</label>
+    </div>
+  </div>
+  
+  <div class="signaling" id="offerPanel">
+    <div><strong>📤 COMPARTE ESTA OFERTA:</strong></div>
+    <textarea id="offerData" readonly></textarea>
+    <button onclick="copyText('offerData')">Copiar</button>
+    <div style="margin-top: 1rem;">
+      <div><strong>📥 PEGA LA RESPUESTA:</strong></div>
+      <textarea id="answerInput" placeholder="Pega aquí la respuesta..."></textarea>
+      <button onclick="processAnswer()">Procesar</button>
+    </div>
+  </div>
+  
+  <div class="signaling" id="answerPanel">
+    <div><strong>📥 PEGA LA OFERTA:</strong></div>
+    <textarea id="offerInput" placeholder="Pega aquí la oferta..."></textarea>
+    <button onclick="processOffer()">Procesar</button>
+    <div id="responseSection" class="hidden">
+      <div style="margin-top: 1rem;"><strong>📤 COMPARTE ESTA RESPUESTA:</strong></div>
+      <textarea id="responseData" readonly></textarea>
+      <button onclick="copyText('responseData')">Copiar</button>
+    </div>
+  </div>
+  
+  <div id="log"></div>
+  
+  <div class="input-area">
+    <input id="msg" placeholder="Mensaje efímero..." autocomplete="off" disabled maxlength="500"/>
+    <button id="sendBtn" onclick="sendMessage()" disabled>Enviar</button>
+  </div>
+  
+  <div class="settings">
+    <label>⏱️ Auto-borrado:
+      <select id="autoDelete">
+        <option value="5">5 seg</option>
+        <option value="10" selected>10 seg</option>
+        <option value="30">30 seg</option>
+        <option value="60">1 min</option>
+        <option value="0">Nunca</option>
+      </select>
+    </label>
+    <label>📱 Solo LAN/Tor (sin STUN): <input type="checkbox" id="noStun" checked></label>
+    <div style="margin-top: 0.5rem; color: #333;">
+      🔐 AES-GCM • 👻 Sin servidor • 💨 Efímero
+    </div>
+  </div>
+</div>
+
+<script>
+// Variables globales
+let pc = null;
+let channel = null;
+let cryptoKey = null;
+let messageCounter = 0;
+let deleteTimers = new Map();
+
+// Referencias DOM
+const elements = {
+  log: document.getElementById('log'),
+  msg: document.getElementById('msg'),
+  sendBtn: document.getElementById('sendBtn'),
+  status: document.getElementById('status'),
+  setupPanel: document.getElementById('setupPanel'),
+  offerPanel: document.getElementById('offerPanel'),
+  answerPanel: document.getElementById('answerPanel'),
+  pwd: document.getElementById('pwd'),
+  autoDelete: document.getElementById('autoDelete'),
+  noStun: document.getElementById('noStun')
+};
+
+// Sistema de logging efímero
+function addMessage(text, type = 'system', autoDelete = true) {
+  const id = `msg-${++messageCounter}`;
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = `message ${type}`;
+  
+  const content = document.createElement('span');
+  content.textContent = text;
+  div.appendChild(content);
+  
+  // Controles de mensaje (solo para mensajes de chat)
+  if (type === 'own' || type === 'other') {
+    const controls = document.createElement('div');
+    controls.className = 'message-controls';
+    
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'download-btn';
+    downloadBtn.textContent = '💾';
+    downloadBtn.title = 'Descargar antes de que se borre';
+    downloadBtn.onclick = () => downloadMessage(text, type);
+    
+    controls.appendChild(downloadBtn);
+    div.appendChild(controls);
+  }
+  
+  elements.log.appendChild(div);
+  elements.log.scrollTop = elements.log.scrollHeight;
+  
+  // Auto-borrado
+  if (autoDelete && elements.autoDelete.value !== '0') {
+    const deleteTime = parseInt(elements.autoDelete.value) * 1000;
+    scheduleMessageDeletion(id, deleteTime);
+  }
+  
+  // Limitar a últimos 20 mensajes para evitar memory bloat
+  if (elements.log.children.length > 20) {
+    const oldest = elements.log.firstChild;
+    if (oldest) {
+      clearTimeout(deleteTimers.get(oldest.id));
+      deleteTimers.delete(oldest.id);
+      oldest.remove();
+    }
+  }
+}
+
+function scheduleMessageDeletion(messageId, delay) {
+  const timer = setTimeout(() => {
+    const element = document.getElementById(messageId);
+    if (element) {
+      element.classList.add('fade-out');
+      setTimeout(() => {
+        element.remove();
+        deleteTimers.delete(messageId);
+      }, 2000);
+    }
+  }, delay);
+  
+  deleteTimers.set(messageId, timer);
+  
+  // Mostrar countdown
+  showCountdown(messageId, delay);
+}
+
+function showCountdown(messageId, totalTime) {
+  const element = document.getElementById(messageId);
+  if (!element) return;
+  
+  const countdown = document.createElement('span');
+  countdown.className = 'countdown';
+  element.appendChild(countdown);
+  
+  const startTime = Date.now();
+  const interval = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    const remaining = Math.max(0, Math.ceil((totalTime - elapsed) / 1000));
+    
+    if (remaining > 0) {
+      countdown.textContent = `${remaining}s`;
+    } else {
+      clearInterval(interval);
+      countdown.remove();
+    }
+  }, 1000);
+}
+
+function downloadMessage(text, type) {
+  const timestamp = new Date().toISOString();
+  const sender = type === 'own' ? 'Tú' : 'Otro';
+  const content = `[${timestamp}] ${sender}: ${text}`;
+  
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ghostlink-msg-${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  addMessage('💾 Mensaje descargado', 'system', false);
+}
+
+function updateStatus(state, message) {
+  elements.status.className = `status ${state}`;
+  elements.status.textContent = `● ${message}`;
+}
+
+// Criptografía (igual que original, pero con mejor error handling)
+async function deriveKey(password) {
+  try {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']
+    );
+    return await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: encoder.encode('salt'),
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false, ['encrypt', 'decrypt']
+    );
+  } catch (error) {
+    throw new Error('Error al derivar clave');
+  }
+}
+
+async function encrypt(text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoder = new TextEncoder();
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, cryptoKey, encoder.encode(text)
+  );
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decrypt(encryptedData) {
+  const data = new Uint8Array(atob(encryptedData).split('').map(c => c.charCodeAt(0)));
+  const iv = data.slice(0, 12);
+  const encrypted = data.slice(12);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv }, cryptoKey, encrypted
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+// WebRTC (corregido pero manteniendo simplicidad)
+async function initConnection() {
+  const password = elements.pwd.value.trim();
+  if (!password) {
+    addMessage('❌ Introduce una clave', 'system', false);
+    return;
+  }
+  
+  try {
+    cryptoKey = await deriveKey(password);
+    const isInitiator = document.getElementById('isInitiator').checked;
+    
+    // Configurar WebRTC (con o sin STUN según preferencia)
+    const config = elements.noStun.checked ? 
+      { iceServers: [] } : 
+      { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    
+    pc = new RTCPeerConnection(config);
+    
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState;
+      if (state === 'connected' || state === 'completed') {
+        updateStatus('online', 'CONECTADO');
+        enableChat();
+        addMessage('🔗 Conectado de forma segura', 'system', false);
+      } else if (state === 'disconnected' || state === 'failed') {
+        updateStatus('offline', 'DESCONECTADO');
+        disableChat();
+        addMessage('📡 Conexión perdida', 'system', false);
+      } else if (state === 'connecting') {
+        updateStatus('connecting', 'CONECTANDO...');
+      }
+    };
+    
+    if (isInitiator) {
+      await createOffer();
+    } else {
+      await waitForOffer();
+    }
+    
+    elements.setupPanel.style.display = 'none';
+    
+  } catch (error) {
+    addMessage('❌ Error: ' + error.message, 'system', false);
+  }
+}
+
+async function createOffer() {
+  channel = pc.createDataChannel('chat');
+  setupDataChannel();
+  
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  
+  document.getElementById('offerData').value = JSON.stringify(offer);
+  elements.offerPanel.style.display = 'block';
+  addMessage('📤 Oferta creada - compártela', 'system', false);
+}
+
+async function waitForOffer() {
+  pc.ondatachannel = (event) => {
+    channel = event.channel;
+    setupDataChannel();
+  };
+  
+  elements.answerPanel.style.display = 'block';
+  addMessage('📥 Listo para recibir oferta', 'system', false);
+}
+
+function setupDataChannel() {
+  channel.onopen = () => addMessage('📢 Canal abierto', 'system', false);
+  channel.onclose = () => addMessage('📢 Canal cerrado', 'system', false);
+  channel.onmessage = async (event) => {
+    try {
+      const decrypted = await decrypt(event.data);
+      addMessage(decrypted, 'other');
+    } catch (error) {
+      addMessage('❌ Error al descifrar', 'system', false);
+    }
+  };
+}
+
+async function processOffer() {
+  try {
+    const offerText = document.getElementById('offerInput').value.trim();
+    const offer = JSON.parse(offerText);
+    
+    await pc.setRemoteDescription(offer);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    
+    document.getElementById('responseData').value = JSON.stringify(answer);
+    document.getElementById('responseSection').classList.remove('hidden');
+    addMessage('📤 Respuesta generada', 'system', false);
+  } catch (error) {
+    addMessage('❌ Oferta inválida', 'system', false);
+  }
+}
+
+async function processAnswer() {
+  try {
+    const answerText = document.getElementById('answerInput').value.trim();
+    const answer = JSON.parse(answerText);
+    await pc.setRemoteDescription(answer);
+    elements.offerPanel.style.display = 'none';
+    addMessage('✅ Respuesta procesada', 'system', false);
+  } catch (error) {
+    addMessage('❌ Respuesta inválida', 'system', false);
+  }
+}
+
+async function sendMessage() {
+  if (!channel || channel.readyState !== 'open') {
+    addMessage('❌ Sin conexión', 'system', false);
+    return;
+  }
+  
+  const text = elements.msg.value.trim();
+  if (!text) return;
+  
+  try {
+    const encrypted = await encrypt(text);
+    channel.send(encrypted);
+    addMessage(text, 'own');
+    elements.msg.value = '';
+  } catch (error) {
+    addMessage('❌ Error al enviar', 'system', false);
+  }
+}
+
+function enableChat() {
+  elements.msg.disabled = false;
+  elements.sendBtn.disabled = false;
+  elements.msg.focus();
+}
+
+function disableChat() {
+  elements.msg.disabled = true;
+  elements.sendBtn.disabled = true;
+}
+
+async function copyText(elementId) {
+  try {
+    const text = document.getElementById(elementId).value;
+    await navigator.clipboard.writeText(text);
+    addMessage('📋 Copiado', 'system', false);
+  } catch (error) {
+    // Fallback para navegadores sin clipboard API
+    document.getElementById(elementId).select();
+    addMessage('📋 Seleccionado - usa Ctrl+C', 'system', false);
+  }
+}
+
+// Event listeners
+elements.msg.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+elements.pwd.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    initConnection();
+  }
+});
+
+// Limpieza al cerrar
+window.addEventListener('beforeunload', () => {
+  deleteTimers.forEach(timer => clearTimeout(timer));
+  if (pc) pc.close();
+});
+
+// Inicialización
+addMessage('👻 GhostLink - Chat efímero iniciado', 'system', false);
+elements.pwd.focus();
+</script>
+</body>
+</html>
