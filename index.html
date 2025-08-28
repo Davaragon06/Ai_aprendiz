@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>GhostLink – Chat efímero</title>
+<style>
+  body{font-family:sans-serif;background:#111;color:#0f0;margin:0;padding:1rem;}
+  #log{height:60vh;overflow-y:auto;border:1px solid #0f0;padding:.5rem;}
+  #msg{width:calc(100% - 6rem);}
+  button,input{background:#000;color:#0f0;border:1px solid #0f0;padding:.3rem .5rem;}
+</style>
+</head>
+<body>
+  <h1>GhostLink (sin QR)</h1>
+  <label>Clave simétrica compartida:
+    <input id="pwd" placeholder="pásala por voz" autocomplete="off"/>
+  </label>
+  <br><br>
+  <div id="log"></div>
+  <input id="msg" placeholder="escribe…" autocomplete="off"/>
+  <button onclick="send()">Enviar</button>
+
+<script>
+/* -------- WebRTC sin servidor (solo señalización manual) -------- */
+const cfg = {iceServers:[]};                 // STUN/TURN omitidos → LAN o Tor
+let pc, ch, key;
+
+const log = t => log.innerHTML += `<div>${t}</div>`;
+document.getElementById('log').scrollTop = 1e6;
+
+/* Encriptado simple AES-GCM en JS */
+async function deriveKey(pwd){
+  const enc = new TextEncoder();
+  const material = await crypto.subtle.importKey(
+    "raw", enc.encode(pwd), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:enc.encode("salt"), iterations:100000, hash:"SHA-256"},
+    material, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+async function encrypt(txt){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt(
+    {name:"AES-GCM", iv}, key, new TextEncoder().encode(txt)));
+  return btoa(String.fromCharCode(...iv,...ct));
+}
+async function decrypt(b64){
+  const data = new Uint8Array(atob(b64).split("").map(c=>c.charCodeAt(0)));
+  const [iv, ct] = [data.slice(0,12), data.slice(12)];
+  const dec = new TextDecoder().decode(await crypto.subtle.decrypt(
+    {name:"AES-GCM", iv}, key, ct));
+  return dec;
+}
+
+/* Señalización manual: copiar/pegar oferta/respuesta */
+async function createOffer(){
+  pc = new RTCPeerConnection(cfg);
+  ch = pc.createDataChannel("chat");
+  ch.onmessage = async e => log(await decrypt(e.data));
+  ch.onopen = ()=>log("✅ Conectado");
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  prompt("Copia la OFERTA y pégasela al otro:", JSON.stringify(offer));
+}
+async function acceptOffer(){
+  const offer = JSON.parse(prompt("Pega la OFERTA recibida:"));
+  pc = new RTCPeerConnection(cfg);
+  pc.ondatachannel = e=>{
+    ch = e.channel;
+    ch.onmessage = async m => log(await decrypt(m.data));
+    ch.onopen = ()=>log("✅ Conectado");
+  };
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  prompt("Copia la RESPUESTA y pégasela al otro:", JSON.stringify(answer));
+}
+async function setAnswer(){
+  const answer = JSON.parse(prompt("Pega la RESPUESTA recibida:"));
+  await pc.setRemoteDescription(answer);
+}
+async function send(){
+  if(!ch || ch.readyState!=="open") return alert("Sin conexión");
+  const txt = msg.value;
+  ch.send(await encrypt(txt));
+  log("Tú: "+txt);
+  msg.value="";
+}
+
+/* Inicialización */
+(async ()=>{
+  const pwd = prompt("Clave simétrica:");
+  if(!pwd) return;
+  key = await deriveKey(pwd);
+  const mode = confirm("¿Eres el que INICIA la conversación?");
+  mode ? createOffer() : acceptOffer();
+})();
+</script>
+</body>
+</html>
